@@ -28,7 +28,7 @@ params = {
 result_search = requests.get('https://m.ppomppu.co.kr/new/bbs_list.php?id=ppomppu&category=4', params=params)
 
 
-client = MongoClient(host='localhost', port=27017)
+client = MongoClient(host='192.168.30.2', port=27017)
 db = client['crawl']['ppomppu']
 
 
@@ -86,6 +86,7 @@ def main():
             board_list.append('작성시간: ' +times[i].text +'\n제목: ' +titles[i].text.strip() +'\n링크: ' +site_url+links[i]['href'] + '\n가격: ' + str(money[i]))
             
             post = {
+                '_id': str(site_url+links[i]['href']),
                 'time': str(times[i].text),
                 'title': str(titles[i].text.strip()),
                 'price': str(money[i]),
@@ -93,6 +94,7 @@ def main():
             }    
             
             db.insert_one(post)
+            print('insert complete')
         
         
 
