@@ -6,10 +6,12 @@ import copy
 from bs4 import BeautifulSoup
 from datetime import datetime
 from urllib.request import urlopen
+import re
+from pymongo import MongoClient
 
 
 # 변수 선언
-site_url = 'https://www.ppomppu.co.kr'  # 사이트 URL
+site_url = 'https://m.ppomppu.co.kr'  # 사이트 URL
 board_list = []
 p_board_list = []
 keyword ='맥북'
@@ -21,22 +23,35 @@ params = {
     'keyword': keyword
 }
 
+
 # 조건 추가하여 사이트 오픈
 result_search = requests.get('https://m.ppomppu.co.kr/new/bbs_list.php?id=ppomppu&category=4', params=params)
-# print(result_search.url)
+
+
+client = MongoClient(host='localhost', port=27017)
+db = client['crawl']['ppomppu']
 
 
 # 링크에서 금액 찾아서 리턴하는 함수
 def get_money(link):
     html = urlopen(link)
-    bs = BeautifulSoup(html, 'html.parser')
+    soup = BeautifulSoup(html, 'html.parser', from_encoding='cp949')
     
     try:
-        contents = bs.find('td', {'class':{'board-contents'}})
+        contents = soup.select('div.cont')[0]
+        #money_pattern = re.compile('(\d{1,3})+(,\d{3})+')
+        money_pattern = re.compile('\d{1,3}(,\d{3})+')
+        result = contents.find_all(money_pattern)
+        result2 = soup.find('div', {'class':{'cont'}}).find_all(money_pattern)
+        result3 = soup.find('div', {'class':{'cont'}}).find_all('p', '')
         
-        print(contents)
-    except:
-        print('error occured')
+        text = contents.get_text()
+        hoho = money_pattern.search(text)
+        
+        return hoho.group()
+        
+    except Exception as e:
+        print(e)
     
 
 
@@ -49,23 +64,42 @@ def f_get_list():
         titles = soup.select('#wrap > div.ct > div.bbs > ul > li > a > div.thmb_N2 > ul > li.title > span.cont')
         links = soup.select('a.list_b_01n')
         
+        return times, titles, links
         
 
-        for i in range(0, len(titles), 1):
-            board_list.append('작성시간: ' +times[i].text +'\n제목: ' +titles[i].text.strip() +'\n링크: ' +site_url+links[i]['href'])
-            
-            link = site_url + links[0]['href']
-            
-            get_money(link)
+
     else:
         print(result_search.status_code)
+        
+def main():
+    while True:
+        times, titles, links = f_get_list()  # 게시글 크롤링
+        money = []
+        
+        sms_list = list(set(board_list) - set(p_board_list))  # 이전 리스트와 비교하여 다른 값만 문자 보낼 리스트로 저장
+        
+        
+        for i in range(0, len(titles), 1):
+            
+            link = site_url + links[i]['href']
+            money.append(get_money(link))
+            board_list.append('작성시간: ' +times[i].text +'\n제목: ' +titles[i].text.strip() +'\n링크: ' +site_url+links[i]['href'] + '\n가격: ' + str(money[i]))
+            
+            post = {
+                'time': str(times[i].text),
+                'title': str(titles[i].text.strip()),
+                'price': str(money[i]),
+                'link': str(site_url+links[i]['href'])
+            }    
+            
+            db.insert_one(post)
+        
+        
 
-while True:
-    f_get_list()  # 게시글 크롤링
-    sms_list = list(set(board_list) - set(p_board_list))  # 이전 리스트와 비교하여 다른 값만 문자 보낼 리스트로 저장
-    
-    print(sms_list)
+        board_list.clear()
+        sms_list.clear()
+        time.sleep(1800)  # 반복 주기
 
-    board_list.clear()
-    sms_list.clear()
-    time.sleep(1800)  # 반복 주기
+
+if __name__ == "__main__":
+    main()
